@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Unnamed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Custom scrollbar for soft theme */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f5f5f4; /* stone-100 */
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #d6d3d1; /* stone-300 */
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #a8a29e; /* stone-400 */
+      }
+      .markdown-body pre {
+        background-color: #fafaf9; /* stone-50 */
+        padding: 1rem;
+        border-radius: 0.75rem;
+        overflow-x: auto;
+        border: 1px solid #e7e5e4; /* stone-200 */
+      }
+      .markdown-body code {
+        background-color: #f5f5f4; /* stone-100 */
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.375rem;
+        font-family: monospace;
+        color: #44403c; /* stone-700 */
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-stone-50 text-stone-900 antialiased overflow-hidden">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
