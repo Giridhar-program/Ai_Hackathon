@@ -25,6 +25,7 @@ export async function generateWithGroq(prompt: string) {
           },
           { role: "user", content: prompt },
         ],
+        max_tokens:512.
       }),
     }
   );
