@@ -1,3 +1,5 @@
+console.log("Groq key at runtime:", import.meta.env.VITE_GROQ_API_KEY);
+
 export async function generateWithGroq(prompt: string) {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
 
