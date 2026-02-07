@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendMessageToGemini, generateImage, synthesizeTemplate } from './services/geminiService';
+import { generateWithGroq } from "./services/groqService";
 import { KnowledgeLevel, Message, PaneTab, TemplateCategory, Template, LogicDiagram, VisualItem } from './types';
 import { TEMPLATES, INITIAL_KNOWLEDGE_LEVEL } from './constants';
 import { LogicVisualizer } from './components/LogicVisualizer';
@@ -235,7 +235,7 @@ const App: React.FC = () => {
       else if (response.mentorStatus === 'searching') setMentorMode(false);
     } catch (error) {
       console.error("API Error", error);
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'model', text: "Logical connection reset. Please rephrase.", timestamp: Date.now() }]);
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'model', text: "AI service unavailablegene", timestamp: Date.now() }]);
     } finally { setIsLoading(false); }
   }, [input, messages, knowledgeLevel, extractVisualization]);
 
@@ -256,7 +256,7 @@ const App: React.FC = () => {
       try {
         const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
         const prompt = `Review this logic draft from file "${fileName}":\n\n${content}`;
-        const response = await sendMessageToGemini(history, prompt, knowledgeLevel);
+        const response = await sendMessageToGroq(history, prompt, knowledgeLevel);
         const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'model', text: response.text || "File processed.", timestamp: Date.now() };
         setMessages((prev) => [...prev, aiMsg]);
         await extractVisualization(response.text, response.imagePart);
