@@ -16,7 +16,7 @@ export async function generateWithGroq(prompt: string) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "llama-3.1-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [
           {
             role: "system",
@@ -25,7 +25,8 @@ export async function generateWithGroq(prompt: string) {
           },
           { role: "user", content: prompt },
         ],
-        max_tokens:512.
+        max_tokens:512,
+        temperature: 0.7,
       }),
     }
   );
