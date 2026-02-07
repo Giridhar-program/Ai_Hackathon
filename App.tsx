@@ -61,6 +61,7 @@ const MarkdownRender: Components = {
         <blockquote className="italic text-stone-600 py-1" {...props} />
     </div>
   ),
+  a: ({node, ...props}) => <a className="text-violet-600 hover:text-violet-800 underline decoration-violet-300 hover:decoration-violet-600 transition-all font-medium" target="_blank" rel="noopener noreferrer" {...props} />,
   code: ({node, inline, className, children, ...props}: any) => {
     return inline ? (
       <code className="font-mono text-[0.9em] bg-stone-100 text-violet-700 px-1.5 py-0.5 rounded border border-stone-200" {...props}>{children}</code>
