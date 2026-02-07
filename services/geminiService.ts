@@ -1,7 +1,7 @@
-import { GoogleGenAI, FunctionDeclaration, Type, Tool } from "@google/genai";
+import { GoogleGenAI, FunctionDeclaration, Type, Tool, GenerateContentResponse } from "@google/genai";
 import { SYSTEM_INSTRUCTION } from "../constants";
+import { Template, TemplateCategory, KnowledgeLevel } from "../types";
 
-// Tool definition for updating mentor status
 const updateMentorStatusTool: FunctionDeclaration = {
   name: 'updateMentorStatus',
   description: 'Updates the mentor mode status based on user understanding.',
@@ -24,7 +24,6 @@ let aiInstance: GoogleGenAI | null = null;
 
 const getAIInstance = () => {
   if (!aiInstance) {
-    // API KEY is strictly from environment variable as per instructions
     aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
   return aiInstance;
@@ -33,7 +32,39 @@ const getAIInstance = () => {
 export interface ChatResponse {
   text: string;
   mentorStatus?: 'searching' | 'satisfied';
+  imagePart?: string;
 }
+
+const getLevelInstruction = (level: string): string => {
+  switch (level) {
+    case KnowledgeLevel.BEGINNER:
+      return `
+### MODE: BEGINNER
+- **Tone**: Gentle, patient, and encouraging.
+- **Vocabulary**: Use simple, non-technical phrasing. Explain concepts using real-world analogies (e.g., "A variable is like a labelled box").
+- **Constraint**: Avoid jargon unless you define it immediately in very simple terms. Assume zero prior knowledge.
+- **Strategy**: Break logic down into the smallest possible steps. Ask simple guiding questions.`;
+      
+    case KnowledgeLevel.INTERMEDIATE:
+      return `
+### MODE: INTERMEDIATE
+- **Tone**: Professional, academic, and structured.
+- **Vocabulary**: Use standard technical terminology freely.
+- **Strategy**: Focus on connecting concepts, discussing best practices, and handling edge cases. Assume the user has the basics down but needs to understand *why* things work this way.
+- **Goal**: Bridge the gap between "making it work" and "mastering the concept".`;
+
+    case KnowledgeLevel.ADVANCED:
+      return `
+### MODE: ADVANCED (Expert Peer-to-Peer)
+- **Tone**: High-bandwidth, dense, and concise. Speak as one expert to another (e.g., Sr. Engineer to Staff Engineer).
+- **Vocabulary**: Use precise, high-level terminology. You can discuss algorithmic complexity (Big O), compiler optimizations, system design trade-offs, and architectural implications.
+- **Meta-Cognition**: You are permitted to discuss how you (the AI) are parsing the user's intent or the logical constraints of the problem itself.
+- **Constraint**: Do NOT simplify. Focus on elegance, efficiency, and abstraction.`;
+
+    default:
+      return "MODE: GENERAL. Adapt to the user's tone.";
+  }
+};
 
 export const sendMessageToGemini = async (
   history: { role: string; parts: { text: string }[] }[],
@@ -41,103 +72,125 @@ export const sendMessageToGemini = async (
   knowledgeLevel: string
 ): Promise<ChatResponse> => {
   const ai = getAIInstance();
-  
-  // Construct the conversation history specifically for the prompt context
-  // We prepend the system instruction and knowledge level context
   const model = 'gemini-3-flash-preview'; 
 
-  const chat = ai.chats.create({
+  const contents = [
+    ...history,
+    { role: 'user', parts: [{ text: currentMessage }] }
+  ];
+
+  const levelSpecificInstruction = getLevelInstruction(knowledgeLevel);
+
+  const response: GenerateContentResponse = await ai.models.generateContent({
     model,
+    contents,
     config: {
-      systemInstruction: `${SYSTEM_INSTRUCTION}\n\nCurrent User Knowledge Level: ${knowledgeLevel}`,
+      systemInstruction: `${SYSTEM_INSTRUCTION}\n\n${levelSpecificInstruction}\n\nALWAYS provide a Mermaid diagram (using \`\`\`mermaid\`) if the logic can be visualized. Focus on the core structural logic.`,
       tools: tools,
+      thinkingConfig: { thinkingBudget: 4000 }
     },
-    history: history,
   });
 
-  const result = await chat.sendMessage({ message: currentMessage });
-  
-  // Handle function calls if any
-  const functionCalls = result.functionCalls;
   let mentorStatus: 'searching' | 'satisfied' | undefined = undefined;
+  const candidate = response.candidates?.[0];
+  const functionCalls = candidate?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
 
   if (functionCalls && functionCalls.length > 0) {
     for (const call of functionCalls) {
-      if (call.name === 'updateMentorStatus') {
+      if (call && call.name === 'updateMentorStatus') {
         const args = call.args as { status: 'searching' | 'satisfied' };
         mentorStatus = args.status;
-        
-        // We need to send the function response back to the model to get the final text response
-        // In a real loop we would do this, but for simplicity in this single-turn wrapper,
-        // we'll accept the function call as a side effect and return the text if available,
-        // or trigger a continuation if the model stopped at the tool call.
-        // For this specific app, the model usually generates text AND calls the tool.
-        // If text is empty, we might need to send the tool response.
       }
     }
   }
 
-  // If the model stopped solely for a function call, we usually need to loop back.
-  // However, Gemini often outputs text thinking along with the tool call.
-  // We will assume for this specific single-turn helper that we extract what we can.
-  // To strictly follow the protocol, if there's a tool call, we should feed it back.
-  
-  let finalText = result.text || "";
+  let finalText = "";
+  let imagePart: string | undefined = undefined;
 
-  if (functionCalls && functionCalls.length > 0 && !finalText) {
-     // If no text, we MUST reply to the function to get the text completion
-     // This is a simplified handling. 
-     const functionResponses = functionCalls.map(call => ({
-        id: call.id,
-        name: call.name,
-        response: { result: 'ok' } 
-     }));
-     
-     const toolResponse = await chat.sendMessage({
-         content: { parts: functionResponses.map(r => ({ functionResponse: r })) } // Correct structure for @google/genai not fully typed here but conceptually
-         // Actually the SDK simplifies this:
-     } as any); // Type casting for brevity in this specific scaffold
-     
-     // Correct way with SDK 0.0.1+ pattern if needed, but let's try to just return the text if present
-     // Re-check SDK docs: chat.sendMessage handles history.
-     // If result.text is empty, we act as if we ack the status update.
-     if (toolResponse.text) {
-         finalText = toolResponse.text;
-     }
+  for (const part of candidate?.content?.parts || []) {
+    if (part.text) finalText += part.text;
+    if (part.inlineData) {
+      imagePart = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+    }
   }
 
+  if (functionCalls && functionCalls.length > 0 && !finalText) {
+      finalText = "I have updated my mentor status and am analyzing your logic further.";
+  }
+
+  return { text: finalText, mentorStatus, imagePart };
+};
+
+export const synthesizeTemplate = async (query: string): Promise<Template> => {
+  const ai = getAIInstance();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: [{ role: 'user', parts: [{ text: `Create a structured LOGIC TEMPLATE for the topic: "${query}". Return JSON.` }]}],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          content: { type: Type.STRING },
+          category: { 
+            type: Type.STRING, 
+            enum: Object.values(TemplateCategory)
+          }
+        },
+        required: ['title', 'description', 'content', 'category']
+      }
+    }
+  });
+
+  const data = JSON.parse(response.text || '{}');
   return {
-    text: finalText,
-    mentorStatus,
+    ...data,
+    id: `syn-${Date.now()}`,
+    isSynthesized: true
   };
 };
 
 export const generateImage = async (prompt: string, size: string): Promise<string | undefined> => {
-  // Always create a new instance to ensure we use the freshest API key (e.g. if user selected one via AI Studio)
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: prompt }]
-      },
-      config: {
-        imageConfig: {
-          imageSize: size,
-          aspectRatio: "1:1"
-        }
-      }
-    });
-
+  // Helper to extract base64 from response
+  const extractImage = (response: any) => {
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }
-  } catch (error) {
+    return undefined;
+  };
+
+  try {
+    // Attempt with High Quality model
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: { parts: [{ text: prompt }] },
+      config: { imageConfig: { imageSize: size, aspectRatio: "1:1" } }
+    });
+    return extractImage(response);
+
+  } catch (error: any) {
+    // If High Quality fails with Permission Denied (403), fallback to Flash
+    if (error.status === 403 || error.message?.includes('403') || error.message?.includes('Permission denied')) {
+        console.warn("Pro image gen failed (403), falling back to Flash model.");
+        try {
+            const fallbackResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts: [{ text: prompt }] },
+                config: { imageConfig: { aspectRatio: "1:1" } } // Flash supports aspect ratio but not size in the same way, kept simple
+            });
+            return extractImage(fallbackResponse);
+        } catch (fallbackError) {
+             console.error("Fallback image gen error", fallbackError);
+             throw error; // Throw the original error to trigger UI key selection prompt
+        }
+    }
     console.error("Image gen error", error);
     throw error;
   }
-  return undefined;
 };
