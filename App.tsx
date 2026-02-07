@@ -219,7 +219,7 @@ const App: React.FC = () => {
 
     try {
       const history = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-      const response = await sendMessageToGemini(history, newUserMsg.text, knowledgeLevel);
+      const response = await generateWithGroq(history, newUserMsg.text, knowledgeLevel);
       
       const newAiMsg: Message = { 
         id: (Date.now() + 1).toString(), 
